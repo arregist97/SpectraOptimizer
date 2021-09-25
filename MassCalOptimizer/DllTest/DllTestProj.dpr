@@ -1,9 +1,8 @@
-program MasCalOptimizerApp;
+program DllTestProj;
 
 uses
   Vcl.Forms,
-  OptimizerTestForm in 'OptimizerTestForm.pas' {Form3},
-  SpecGrinder in 'SpecGrinder.pas';
+  DllTestView in 'DllTestView.pas' {Form3};
 
 {$R *.res}
 

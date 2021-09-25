@@ -191,7 +191,7 @@ begin
       begin
         distMetric := CalcDistScore(combo);
 
-        if candidate.NumIsos = 1 then
+        if combo.FMatches.Count = 1 then
         begin
           abundMetric := -10;
         end
@@ -200,9 +200,9 @@ begin
           abundMetric := CalcAbundScore(combo, Peaks, metricObject.FKey, IsoTable);
         end;
 
-        if not matchFound then
+        if (not matchFound) or (bestIndex = 0) then//second condition added to mirror a flaw in the legacy code
         begin
-          if candidate.NumIsos = 1 then
+          if combo.FMatches.Count = 1 then
           begin
             if distMetric < 0.002 then
             begin
@@ -210,7 +210,14 @@ begin
               //remaining faithful to the legacy code was more important than correcting it.
               secondCombo := TComb(comboList.SimplifiedCombinations[1]);
               metricObject.FDistMetric := CalcDistScore(secondCombo);
-              metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
+              if secondcombo.FMatches.Count = 1 then
+              begin
+                metricObject.FAbundMetric := -10;
+              end
+              else
+              begin
+                metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
+              end;
               bestIndex := 1;
               secondCombo.Free;
               matchFound := True;
@@ -234,7 +241,7 @@ begin
         begin
           if metricObject.FDistMetric > distMetric then
           begin
-            if candidate.NumIsos = 1 then
+            if combo.FMatches.Count = 1 then
             begin
               if distMetric < 0.002 then
               begin
@@ -242,7 +249,14 @@ begin
                 //remaining faithful to the legacy code was more important than correcting it.
                 secondCombo := TComb(comboList.SimplifiedCombinations[1]);
                 metricObject.FDistMetric := CalcDistScore(secondCombo);
-                metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
+                if secondcombo.FMatches.Count = 1 then
+                begin
+                  metricObject.FAbundMetric := -10;
+                end
+                else
+                begin
+                  metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
+                end;
                 bestIndex := 1;
                 secondCombo.Free;
               end;
