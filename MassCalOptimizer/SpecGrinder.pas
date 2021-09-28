@@ -6,6 +6,7 @@ uses
 CsvSpectrum,
 FeatureCalculator,
 FeatureTable,
+FileRoutines,
 MassSpectrum,
 SearchGrid,
 System.Classes,
@@ -18,9 +19,11 @@ const
   c_NumSlopes = 5;//half the number of slopes that will be experimented with(due to the mirror)
   c_NumOffsets = 20;//half the number of offsets that will be experimented with(due to the mirror)
   c_ModelPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_models/model_';
-  c_ResultPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelOutput';
+  c_ResultPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelOutput_';
   c_FeatPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelInput';
   c_FeatLoc = 'C:\Users\arreg\Documents\optimizer_data\DllModelInput';
+  c_ResultsLoc = 'C:\Users\arreg\Documents\optimizer_data\DllModelOutput_';
+  c_DataLoc = '\Users\arreg\Documents\optimizer_data\PlotData.csv';
 
 type
 
@@ -29,8 +32,11 @@ TSpecGrinder = class
     FBestScore: Double;
     FBestSlope: Double;
     FBestOffset: Double;
-    procedure WriteFeatures(FeatTable: TFeatureTable; FeatLoc: String);
-    function CalcScore(FeatTable: TFeatureTable): Double;
+    FOffsetEdge: Double;
+    FSlopeEdge: Double;
+    procedure WriteFeatures(FeatTable: TFeatureTable; FeatWriter: Integer);
+    procedure CalcScore;
+    procedure FindBestScore(SearchGrid: TSearchGrid; BaseSlope, BaseOffset: Double; NumSlopes, NumOffsets: Integer; var DataFile: TextFile);
     procedure RecOptimizeSpectrum(Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
   public
     property Score: Double read FBestScore;
@@ -43,21 +49,12 @@ implementation
 function fnGradientBoostedPredictor(mPtr, dPtr, rPtr: PAnsiChar): Double; cdecl; external
 'GradientBoostedPredictor.dll' name 'fnGradientBoostedPredictor'; //Using Double
 
-procedure TSpecGrinder.WriteFeatures(FeatTable: TFeatureTable; FeatLoc: String);
+procedure TSpecGrinder.WriteFeatures(FeatTable: TFeatureTable; FeatWriter: Integer);
 var
-  featFile, i, check: Integer;
+  i, check: Integer;
   buffer: AnsiString;
 
 begin
-  featFile := FileCreate(FeatLoc);
-  if FeatFile = INVALID_HANDLE_VALUE then
-  begin
-    featFile := FileOpen(FeatLoc, fmOpenWrite);
-    if FeatFile = INVALID_HANDLE_VALUE then
-    begin
-      raise Exception.Create('Could not open file' + FeatLoc);
-    end;
-  end;
 
   buffer := '0';
 
@@ -84,38 +81,123 @@ begin
   FloatToStr(featTable.AvgThreeDist) + #9 +
   FloatToStr(featTable.AvgThreeAbundSep) + #13#10;
 
-  check := FileWrite(featFile, buffer[1], Length(buffer));
+  check := FileWrite(FeatWriter, buffer[1], Length(buffer));
 
   if check = -1 then
   begin
     raise Exception.Create('Could not transfer feature data.');
   end;
 
-  FileClose(featFile);
 
 end;
 
-function TSpecGrinder.CalcScore(FeatTable: TFeatureTable): Double;
+procedure TSpecGrinder.CalcScore();
 var
-  cumulative: Double;
   featPtr, modelPtr, resultPtr: PAnsiChar;
   i: Integer;
-  tempAnsiStr: AnsiString;
+  tempModelStr, tempResultStr: AnsiString;
 
 begin
-  WriteFeatures(FeatTable, c_FeatLoc);
   featPtr := Addr(c_FeatPath[1]);
-  resultPtr := Addr(c_ResultPath[1]);
-  cumulative := 0;
 
   for i := 0 to 9 do
   begin
-    tempAnsiStr := c_ModelPath + IntToStr(i) + '.txt';//change models
-    modelPtr := Addr(tempAnsiStr[1]);
-    cumulative := cumulative + fnGradientBoostedPredictor(modelPtr, featPtr, resultPtr);
+    tempModelStr := c_ModelPath + IntToStr(i) + '.txt';//change models
+    tempResultStr := c_ResultPath + IntToStr(i) + '.txt';//change result files
+
+    modelPtr := Addr(tempModelStr[1]);
+    resultPtr := Addr(tempResultStr[1]);
+    fnGradientBoostedPredictor(modelPtr, featPtr, resultPtr);
   end;
 
-  Result := cumulative / 10;
+end;
+
+procedure TSpecGrinder.FindBestScore(SearchGrid: TSearchGrid; BaseSlope, BaseOffset: Double; NumSlopes, NumOffsets: Integer; var DataFile: TextFile);
+var
+  results: Array[0..9] of Integer;
+  fileIndex: Integer;
+  loc: String;
+  cumulative, score: Double;
+  lineStr: WideString;
+  slopeMod, offsetMod: Double;
+  slopeMult, offsetMult: Integer;
+  i, j: Integer;
+  slope, offset: Double;
+  slopeIndex, OffsetIndex: Integer;
+  buffer: String;
+
+begin
+  //open result files
+  for i := 0 to 9 do
+  begin
+    loc := c_ResultsLoc + IntToStr(i) + '.txt';
+    results[i] := FileOpen(loc, fmOpenRead);
+  end;
+
+  FBestScore := 0;
+
+  for i := 0 to NumSlopes - 1 do
+  begin
+    slopeMod := SearchGrid.SlopeAxis[i];
+    for slopeMult in c_Mults do
+    begin
+      slopeMod := slopeMod * slopeMult;
+      for j := 0 to NumOffsets - 1 do
+      begin
+        offsetMod := SearchGrid.OffsetAxis[j];
+        for offsetMult in  c_Mults do
+        begin
+          offsetMod := offsetMod * offsetMult;
+
+          slope := baseSlope + slopeMod * baseSlope;
+          offset := baseOffset + offsetMod * baseOffset;
+          //add model scores from each result line
+          cumulative := 0;
+          for fileIndex := 0 to 9 do
+          begin
+            lineStr := ReadHeaderLine(results[fileIndex]);
+            if lineStr <> '' then
+            begin
+              cumulative := cumulative + StrToFloat(lineStr);
+            end
+            else
+            begin
+              raise Exception.Create('Unexpected end of file: ' + loc);
+            end;
+          end;
+
+          score := cumulative / 10;
+
+          buffer := FloatToStr(slope) + ',' + FloatToStr(offset) + ',' + FloatToStr(score);
+          WriteLn(DataFile, buffer);
+
+          if score > FBestScore then
+          begin
+            FBestScore := score;
+            FBestOffset := offsetMod;
+            FBestSlope := slopeMod;
+
+            offsetIndex := SearchGrid.OffsetIndex[FBestOffset * offsetMult];
+            slopeIndex := SearchGrid.SlopeIndex[FBestSlope * slopeMult];
+
+            FOffsetEdge := 2 * ABS(0.5 - (offsetIndex + 0.1) / NumOffsets);//outdated calculations
+            FSlopeEdge := 2 * ABS(0.5 - (slopeIndex + 0.1) / NumSlopes);
+          end;
+
+        end;
+
+      end;
+
+    end;
+
+  end;
+
+  //close result files
+  for i := 0 to 9 do
+  begin
+    FileClose(results[i]);
+  end;
+
 end;
 
 procedure TSpecGrinder.RecOptimizeSpectrum(Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
@@ -128,23 +210,47 @@ var
   slopeMod, offsetMod: Double;
   slopeMult, offsetMult: Integer;
   i, j: Integer;
-  improved: Boolean;
   slope, offset: Double;
   slopeIndex, OffsetIndex: Integer;
-  slopeEdge, offsetEdge: Double;
   newSlopeRange, newOffsetRange: Array[0..1] of Double;
   newNumSlopes, newNumOffsets: Integer;
+  featFile: Integer;
+  dataFile: TextFile;
 
 
 begin
   grid := TSearchGrid.Create(SlopeRange, OffsetRange, NumSlopes, NumOffsets);
   baseSlope := csv.MassOverTime;
   baseOffset := csv.MassOffset;
+  featFile := FileCreate(c_FeatLoc);
+  if FeatFile = INVALID_HANDLE_VALUE then
+  begin
+    featFile := FileOpen(c_FeatLoc, fmOpenWrite);
+    if FeatFile = INVALID_HANDLE_VALUE then
+    begin
+      raise Exception.Create('Could not open file' + c_FeatLoc);
+    end;
+  end;
+
+  AssignFile(dataFile, c_DataLoc);
+  if Prev = 0 then
+  begin
+    ReWrite(dataFile);
+    WriteLn(dataFile, 'MassOverTime,MassOffset,Score');
+  end
+  else
+  begin
+    Append(dataFile);
+  end;
+
+
+  (*
   if Prev = 0 then
   begin
     massSpec := TMassSpectrum.Create(Csv, baseSlope, baseOffset);
     featureTable := FeatureCalc.Feature[MassSpec];
-    score := CalcScore(featureTable);
+    WriteFeatures(featureTable, featFile);
+    score := CalcScore();
     FBestScore := score;
     Prev := score;
     massSpec.Free;
@@ -153,7 +259,7 @@ begin
   begin
     FBestScore := 0;
   end;
-
+  *)
   for i := 0 to NumSlopes - 1 do
   begin
     slopeMod := grid.SlopeAxis[i];
@@ -165,31 +271,13 @@ begin
         offsetMod := grid.OffsetAxis[j];
         for offsetMult in  c_Mults do
         begin
-          improved := False;
           offsetMod := offsetMod * offsetMult;
 
           slope := baseSlope + slopeMod * baseSlope;
           offset := baseOffset + offsetMod * baseOffset;
           massSpec := TMassSpectrum.Create(Csv, slope, offset);
           featureTable := FeatureCalc.Feature[MassSpec];
-          score := CalcScore(featureTable);
-
-          if score > FBestScore then//>=?
-            improved := True;
-
-          if improved then
-          begin
-            FBestScore := score;
-            FBestOffset := offsetMod;
-            FBestSlope := slopeMod;
-
-            offsetIndex := grid.OffsetIndex[FBestOffset * offsetMult];
-            slopeIndex := grid.SlopeIndex[FBestSlope * slopeMult];
-
-            offsetEdge := 2 * ABS(0.5 - (offsetIndex + 0.1) / NumOffsets);//outdated calculations
-            slopeEdge := 2 * ABS(0.5 - (slopeIndex + 0.1) / NumSlopes);
-          end;
-
+          WriteFeatures(featureTable, featFile);
           massSpec.Free;
         end;
 
@@ -199,14 +287,20 @@ begin
 
   end;
 
+  FileClose(featFile);
+
+  CalcScore();
+  FindBestScore(grid, baseSlope, baseOffset, NumSlopes, NumOffsets, dataFile);
+  CloseFile(dataFile);
+
   grid.Free;
 
   if FBestScore > Prev then
   begin
-    newOffsetRange[0] := FBestOffset - (0.5 / offsetEdge) * FBestOffset;//outdated calculations
-    newOffsetRange[1] := FBestOffset + (0.5 / offsetEdge) * FBestOffset;
-    newSlopeRange[0] := FBestSlope + (0.5 / slopeEdge) * FBestSlope;
-    newSlopeRange[1] := FBestSlope - (0.5 / slopeEdge) * FBestSlope;
+    newOffsetRange[0] := FBestOffset - (0.5 / FOffsetEdge) * FBestOffset;//outdated calculations
+    newOffsetRange[1] := FBestOffset + (0.5 / FOffsetEdge) * FBestOffset;
+    newSlopeRange[0] := FBestSlope + (0.5 / FSlopeEdge) * FBestSlope;
+    newSlopeRange[1] := FBestSlope - (0.5 / FSlopeEdge) * FBestSlope;
     newNumOffsets := 20;
     newNumSlopes := 5;
     Prev := FBestScore;
