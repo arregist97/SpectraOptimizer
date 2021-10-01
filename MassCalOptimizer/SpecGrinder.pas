@@ -29,6 +29,8 @@ type
 
 TSpecGrinder = class
   private
+    FPrevSlope: Double;
+    FPrevOffset: Double;
     FBestScore: Double;
     FBestSlope: Double;
     FBestOffset: Double;
@@ -304,10 +306,16 @@ begin
     newNumOffsets := 20;
     newNumSlopes := 5;
     Prev := FBestScore;
-
-
+    FPrevSlope := FBestSlope;
+    FPrevOffset := FBestOffset;
 
     RecOptimizeSpectrum(Csv, FeatureCalc, newSlopeRange, newOffsetRange, newNumOffsets, newNumSlopes, Prev);
+  end
+  else
+  begin
+    FBestScore := Prev;
+    FBestSlope := FPrevSlope;
+    FBestOffset := FPrevOffset;
   end;
 
 
