@@ -200,8 +200,7 @@ begin
 
   end;
 
-  if (maxIndex < sorted.Count)//if the max index is less than count, we need to add the last item (unless there is 0 elements)
-    and (maxIndex <> 0) then//second condition added to mirror a flaw in legacy code, which ignores splits with exactly 1 nominal mass where the best candidate is the element 0
+  if (maxIndex < sorted.Count) then//if the max index is less than count, we need to add the last item (unless there is 0 elements)
   begin
     maxPeak := TPeak.Create;
     maxPeak.FMass := TPeak(sorted[maxIndex]).FMass;

@@ -200,40 +200,14 @@ begin
           abundMetric := CalcAbundScore(combo, Peaks, metricObject.FKey, IsoTable);
         end;
 
-        if (not matchFound) or (bestIndex = 0) then//second condition added to mirror a flaw in the legacy code
+        if (not matchFound) then
         begin
-          if combo.FMatches.Count = 1 then
+          if (combo.FMatches.Count > 1) and (abundMetric < 0.3) then
           begin
-            if distMetric < 0.002 then
-            begin
-              //the original code probably was supposed to get the current metrics, but didn't due to a typo.
-              //remaining faithful to the legacy code was more important than correcting it.
-              secondCombo := TComb(comboList.SimplifiedCombinations[1]);
-              metricObject.FDistMetric := CalcDistScore(secondCombo);
-              if secondcombo.FMatches.Count = 1 then
-              begin
-                metricObject.FAbundMetric := -10;
-              end
-              else
-              begin
-                metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
-              end;
-              bestIndex := 1;
-              secondCombo.Free;
-              matchFound := True;
-            end;
-
-          end
-          else
-          begin
-            if abundMetric < 0.3 then
-            begin
-              metricObject.FDistMetric := distMetric;
-              metricObject.FAbundMetric := abundMetric;
-              bestIndex := j;
-              matchFound := True;
-            end;
-
+            metricObject.FDistMetric := distMetric;
+            metricObject.FAbundMetric := abundMetric;
+            bestIndex := j;
+            matchFound := True;
           end;
 
         end
@@ -241,36 +215,11 @@ begin
         begin
           if metricObject.FDistMetric > distMetric then
           begin
-            if combo.FMatches.Count = 1 then
+            if (combo.FMatches.Count > 1) and (abundMetric < 0.3) then
             begin
-              if distMetric < 0.002 then
-              begin
-                //the original code probably was supposed to get the current metrics, but didn't due to a typo.
-                //remaining faithful to the legacy code was more important than correcting it.
-                secondCombo := TComb(comboList.SimplifiedCombinations[1]);
-                metricObject.FDistMetric := CalcDistScore(secondCombo);
-                if secondcombo.FMatches.Count = 1 then
-                begin
-                  metricObject.FAbundMetric := -10;
-                end
-                else
-                begin
-                  metricObject.FAbundMetric := CalcAbundScore(secondCombo, Peaks, metricObject.FKey, IsoTable);
-                end;
-                bestIndex := 1;
-                secondCombo.Free;
-              end;
-
-            end
-            else
-            begin
-              if abundMetric < 0.3 then
-              begin
-                metricObject.FDistMetric := distMetric;
-                metricObject.FAbundMetric := abundMetric;
-                bestIndex := j;
-              end;
-
+              metricObject.FDistMetric := distMetric;
+              metricObject.FAbundMetric := abundMetric;
+              bestIndex := j;
             end;
           end;
 

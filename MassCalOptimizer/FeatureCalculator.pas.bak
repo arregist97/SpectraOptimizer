@@ -64,7 +64,6 @@ private
   procedure CalcIsoStats(Peaks: TMassSpectrum);
   function GetFeatures(MS: TMassSpectrum):TFeatureTable;
 public
-  FIsotopeStringList: TStringList;
   property Feature[MS: TMassSpectrum]: TFeatureTable read GetFeatures;
   constructor Create(FragLoc, RangeLoc, IsoLoc: String);
   destructor Destroy; override;
@@ -548,8 +547,6 @@ begin
   totalThreeDists := 0;
   totalTwoAbunds := 0;
   totalThreeAbunds := 0;
-  FreeAndNil(FIsotopeStringList); //Set dealloc and set to nil as a precaution
-  FIsotopeStringList := TStringList.Create;
   for i := 0 to isoMetrics.FElements.Count - 1 do
   begin
     element := TEleMetric(isoMetrics.FElements[i]);
@@ -558,7 +555,6 @@ begin
       Inc(twoElems);
       totalTwoDists := totalTwoDists + element.FDistMetric;
       totalTwoAbunds := totalTwoAbunds + element.FAbundMetric;
-      FIsotopeStringList.Add(element.FKey);
     end
     else
     begin
@@ -567,7 +563,6 @@ begin
         Inc(threeElems);
         totalThreeDists := totalThreeDists + element.FDistMetric;
         totalThreeAbunds := totalThreeAbunds + element.FAbundMetric;
-        FIsotopeStringList.Add(element.FKey);
       end;
 
     end;
@@ -600,8 +595,7 @@ begin
     FFeatures.AvgTwoAbundSep := 0;
   end;
 
-  candidateList.Free;
-  isoMetrics.Free;
+
 
 end;
 
@@ -630,7 +624,6 @@ begin
   FIsoTable := TIsotopeTable.Create(IsoLoc);
   FLowerThresh := TList.Create;
   FHigherThresh := TList.Create;
-  FIsotopeStringList := nil;
 end;
 
 Destructor TFeatureCalculator.Destroy;

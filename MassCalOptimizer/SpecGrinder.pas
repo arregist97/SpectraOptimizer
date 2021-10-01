@@ -18,7 +18,7 @@ const
   c_Mults: Array[0..1] of Integer = (1, -1);//we simulate 4 quardants by mirroring the positive indices
   c_NumSlopes = 5;//half the number of slopes that will be experimented with(due to the mirror)
   c_NumOffsets = 20;//half the number of offsets that will be experimented with(due to the mirror)
-  c_ModelPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_models/model_';
+  c_ModelPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_models/model#';
   c_ResultPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelOutput_';
   c_FeatPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelInput';
   c_FeatLoc = 'C:\Users\arreg\Documents\optimizer_data\DllModelInput';
