@@ -51,7 +51,12 @@ begin
   fLoc := 'C:\Users\arreg\Documents\optimizer_data\Fragment Table.csv';
   rLoc := 'C:\Users\arreg\Documents\optimizer_data\saved_ranges.csv';
   iLoc := 'C:\Users\arreg\Documents\optimizer_data\Elements.txt';
-  csvLoc := 'C:\Users\arreg\Documents\optimizer_data\Lactose Particles HR2-004-Neg_XYMassShiftCorrected_pb2.csv';
+  csvLoc := 'C:\Users\arreg\Documents\optimizer_data\zip lock bag-001.csv';
+
+  csv := TCsvSpectrum.Create(csvLoc);
+  featureCalc := TFeatureCalculator.Create(fLoc, rLoc, iLoc);
+  massSpectrum := TMassSpectrum.Create(csv, csv.MassOverTime, csv.MassOffset);
+  featureTable := FeatureCalc.Feature[massSpectrum];
 
   grinder := TSpecGrinder.Create(fLoc, rLoc, iLoc, csvLoc);
 

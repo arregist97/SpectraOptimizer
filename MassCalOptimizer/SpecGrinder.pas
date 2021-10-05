@@ -13,10 +13,10 @@ System.Classes,
 System.SysUtils;
 
 const
-  c_SlopeRange: Array[0..1] of Double = (0.00001, 0.0000001);//min/max distance the modified slopes can be from the base slope
-  c_OffsetRange: Array[0..1] of Double = (0.001, 0.000001);//min/max distance the modified offsets can be from the base offset
+  c_SlopeRange: Array[0..1] of Double = (0.00009, 0.0000001);//min/max distance the modified slopes can be from the base slope
+  c_OffsetRange: Array[0..1] of Double = (0.009, 0.000001);//min/max distance the modified offsets can be from the base offset
   c_Mults: Array[0..1] of Integer = (1, -1);//we simulate 4 quardants by mirroring the positive indices
-  c_NumSlopes = 5;//half the number of slopes that will be experimented with(due to the mirror)
+  c_NumSlopes = 20;//half the number of slopes that will be experimented with(due to the mirror)
   c_NumOffsets = 20;//half the number of offsets that will be experimented with(due to the mirror)
   c_ModelPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_models/model#';
   c_ResultPath: AnsiString = 'C:/Users/arreg/Documents/optimizer_data/DllModelOutput_';
@@ -39,7 +39,7 @@ TSpecGrinder = class
     procedure WriteFeatures(FeatTable: TFeatureTable; FeatWriter: Integer);
     procedure CalcScore;
     procedure FindBestScore(SearchGrid: TSearchGrid; BaseSlope, BaseOffset: Double; NumSlopes, NumOffsets: Integer; var DataFile: TextFile);
-    procedure RecOptimizeSpectrum(Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
+    procedure RecOptimizeSpectrum(BaseSlope, BaseOffset: Double; Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
   public
     property Score: Double read FBestScore;
     constructor Create(FragLoc, RangeLoc, IsoLoc, CsvLoc: String);
@@ -182,8 +182,8 @@ begin
             offsetIndex := SearchGrid.OffsetIndex[FBestOffset * offsetMult];
             slopeIndex := SearchGrid.SlopeIndex[FBestSlope * slopeMult];
 
-            FOffsetEdge := 2 * ABS(0.5 - (offsetIndex + 0.1) / NumOffsets);//outdated calculations
-            FSlopeEdge := 2 * ABS(0.5 - (slopeIndex + 0.1) / NumSlopes);
+            FOffsetEdge := ABS(offsetIndex + 0.1) / NumOffsets;//slightly less outdated calculations
+            FSlopeEdge := ABS(slopeIndex + 0.1) / NumSlopes;
           end;
 
         end;
@@ -202,18 +202,18 @@ begin
 
 end;
 
-procedure TSpecGrinder.RecOptimizeSpectrum(Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
+procedure TSpecGrinder.RecOptimizeSpectrum(BaseSlope, BaseOffset: Double; Csv: TCsvSpectrum; FeatureCalc: TFeatureCalculator; SlopeRange, OffsetRange: Array of Double; NumSlopes, NumOffsets: Integer; Prev: Double);
 var
   grid: TSearchGrid;
   massSpec: TMassSpectrum;
   featureTable: TFeatureTable;
-  baseSlope, baseOffset: Double;
   score: Double;
   slopeMod, offsetMod: Double;
   slopeMult, offsetMult: Integer;
   i, j: Integer;
   slope, offset: Double;
   slopeIndex, OffsetIndex: Integer;
+  newSlope, newOffset: Double;
   newSlopeRange, newOffsetRange: Array[0..1] of Double;
   newNumSlopes, newNumOffsets: Integer;
   featFile: Integer;
@@ -222,8 +222,6 @@ var
 
 begin
   grid := TSearchGrid.Create(SlopeRange, OffsetRange, NumSlopes, NumOffsets);
-  baseSlope := csv.MassOverTime;
-  baseOffset := csv.MassOffset;
   featFile := FileCreate(c_FeatLoc);
   if FeatFile = INVALID_HANDLE_VALUE then
   begin
@@ -275,8 +273,8 @@ begin
         begin
           offsetMod := offsetMod * offsetMult;
 
-          slope := baseSlope + slopeMod * baseSlope;
-          offset := baseOffset + offsetMod * baseOffset;
+          slope := BaseSlope + slopeMod * BaseSlope;
+          offset := BaseOffset + offsetMod * BaseOffset;
           massSpec := TMassSpectrum.Create(Csv, slope, offset);
           featureTable := FeatureCalc.Feature[MassSpec];
           WriteFeatures(featureTable, featFile);
@@ -292,24 +290,26 @@ begin
   FileClose(featFile);
 
   CalcScore();
-  FindBestScore(grid, baseSlope, baseOffset, NumSlopes, NumOffsets, dataFile);
+  FindBestScore(grid, BaseSlope, BaseOffset, NumSlopes, NumOffsets, dataFile);
   CloseFile(dataFile);
 
   grid.Free;
 
   if FBestScore > Prev then
   begin
-    newOffsetRange[0] := FBestOffset - (0.5 / FOffsetEdge) * FBestOffset;//outdated calculations
-    newOffsetRange[1] := FBestOffset + (0.5 / FOffsetEdge) * FBestOffset;
-    newSlopeRange[0] := FBestSlope + (0.5 / FSlopeEdge) * FBestSlope;
-    newSlopeRange[1] := FBestSlope - (0.5 / FSlopeEdge) * FBestSlope;
+    newOffsetRange[0] := OffsetRange[0] * 0.5;//slightly less outdated calculations
+    newOffsetRange[1] := OffsetRange[1] * 0.5;
+    newSlopeRange[0] := SlopeRange[0] * 0.5;
+    newSlopeRange[1] := SlopeRange[1] * 0.5;
+    newSlope := BaseSlope + FBestSlope;
+    newOffset := BaseOffset + FBestOffset;
     newNumOffsets := 20;
-    newNumSlopes := 5;
+    newNumSlopes := 20;
     Prev := FBestScore;
     FPrevSlope := FBestSlope;
     FPrevOffset := FBestOffset;
 
-    RecOptimizeSpectrum(Csv, FeatureCalc, newSlopeRange, newOffsetRange, newNumOffsets, newNumSlopes, Prev);
+    RecOptimizeSpectrum(newSlope, newOffset, Csv, FeatureCalc, newSlopeRange, newOffsetRange, newNumOffsets, newNumSlopes, Prev);
   end
   else
   begin
@@ -324,13 +324,16 @@ end;
 constructor TSpecGrinder.Create(FragLoc, RangeLoc, IsoLoc, CsvLoc: String);
 var
   csv: TCsvSpectrum;
+  baseSlope, baseOffset: Double;
   featureCalc: TFeatureCalculator;
   score: Double;
 
 begin
   csv := TCsvSpectrum.Create(CsvLoc);
+  baseSlope := csv.MassOverTime;
+  baseOffset := csv.MassOffset;
   featureCalc := TFeatureCalculator.Create(FragLoc, RangeLoc, IsoLoc);
-  recOptimizeSpectrum(csv, featureCalc, c_SlopeRange, c_OffsetRange, c_NumSlopes, c_NumOffsets, 0.0);
+  recOptimizeSpectrum(baseSlope, baseOffset, csv, featureCalc, c_SlopeRange, c_OffsetRange, c_NumSlopes, c_NumOffsets, 0.0);
   featureCalc.Free;
   csv.Free;
 end;
