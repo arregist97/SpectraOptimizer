@@ -176,8 +176,8 @@ begin
           if score > FBestScore then
           begin
             FBestScore := score;
-            FBestOffset := offsetMod;
-            FBestSlope := slopeMod;
+            FBestOffset := offset;
+            FBestSlope := slope;
 
             offsetIndex := SearchGrid.OffsetIndex[FBestOffset * offsetMult];
             slopeIndex := SearchGrid.SlopeIndex[FBestSlope * slopeMult];
@@ -301,8 +301,8 @@ begin
     newOffsetRange[1] := OffsetRange[1] * 0.5;
     newSlopeRange[0] := SlopeRange[0] * 0.5;
     newSlopeRange[1] := SlopeRange[1] * 0.5;
-    newSlope := BaseSlope + FBestSlope;
-    newOffset := BaseOffset + FBestOffset;
+    newSlope := FBestSlope;
+    newOffset := FBestOffset;
     newNumOffsets := 20;
     newNumSlopes := 20;
     Prev := FBestScore;
