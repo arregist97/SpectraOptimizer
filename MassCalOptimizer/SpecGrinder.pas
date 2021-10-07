@@ -13,8 +13,8 @@ System.Classes,
 System.SysUtils;
 
 const
-  c_SlopeRange: Array[0..1] of Double = (0.00009, 0.0000001);//min/max distance the modified slopes can be from the base slope
-  c_OffsetRange: Array[0..1] of Double = (0.009, 0.000001);//min/max distance the modified offsets can be from the base offset
+  c_SlopeRange: Array[0..1] of Double = (0.00009, 0.0);//min/max distance the modified slopes can be from the base slope
+  c_OffsetRange: Array[0..1] of Double = (0.009, 0.0);//min/max distance the modified offsets can be from the base offset
   c_Mults: Array[0..1] of Integer = (1, -1);//we simulate 4 quardants by mirroring the positive indices
   c_NumSlopes = 20;//half the number of slopes that will be experimented with(due to the mirror)
   c_NumOffsets = 20;//half the number of offsets that will be experimented with(due to the mirror)
@@ -115,6 +115,14 @@ begin
 end;
 
 procedure TSpecGrinder.FindBestScore(SearchGrid: TSearchGrid; BaseSlope, BaseOffset: Double; NumSlopes, NumOffsets: Integer; var DataFile: TextFile);
+(*
+ * Rather than store all the slopes and offsets, we recalculate them here,
+ * and write them to a file along with their corresponding scores.
+ *
+ * Addtionally, we have to include the duplicate protection code here as well,
+ * so that the lines we look for sync with the lines we sent to the dll.
+ *
+ *)
 var
   results: Array[0..9] of Integer;
   fileIndex: Integer;
@@ -125,8 +133,8 @@ var
   slopeMult, offsetMult: Integer;
   i, j: Integer;
   slope, offset: Double;
-  slopeIndex, OffsetIndex: Integer;
   buffer: String;
+  duplicate: Boolean;//To avoid mirroring the center axes, we will manually ignore duplicate values.
 
 begin
   //open result files
@@ -137,7 +145,7 @@ begin
   end;
 
   FBestScore := 0;
-
+  duplicate := False;
   for i := 0 to NumSlopes - 1 do
   begin
     slopeMod := SearchGrid.SlopeAxis[i];
@@ -151,40 +159,50 @@ begin
         begin
           offsetMod := offsetMod * offsetMult;
 
-          slope := baseSlope + slopeMod * baseSlope;
-          offset := baseOffset + offsetMod * baseOffset;
-          //add model scores from each result line
-          cumulative := 0;
-          for fileIndex := 0 to 9 do
+          //duplicate check
+          if (slopeMod = 0) and (slopeMult = -1) then//checks for a duplicate if the slope is zero(mirroring the center is pointless)
           begin
-            lineStr := ReadHeaderLine(results[fileIndex]);
-            if lineStr <> '' then
+            duplicate := True;
+          end;
+          if (offsetMod = 0) and (offsetMult = -1) then//checks for a duplicate if the offset is zero
+          begin
+            duplicate := True;
+          end;
+
+          if not duplicate then
+          begin
+            slope := baseSlope + slopeMod * baseSlope;
+            offset := baseOffset + offsetMod * baseOffset;
+            //add model scores from each result line
+            cumulative := 0;
+            for fileIndex := 0 to 9 do
             begin
-              cumulative := cumulative + StrToFloat(lineStr);
-            end
-            else
-            begin
-              raise Exception.Create('Unexpected end of file: ' + loc);
+              lineStr := ReadHeaderLine(results[fileIndex]);
+              if lineStr <> '' then
+              begin
+                cumulative := cumulative + StrToFloat(lineStr);
+              end
+              else
+              begin
+                raise Exception.Create('Unexpected end of file: ' + loc);
+              end;
             end;
+
+            score := cumulative / 10;
+
+            buffer := FloatToStr(slope) + ',' + FloatToStr(offset) + ',' + FloatToStr(score);
+            WriteLn(DataFile, buffer);
+
+            if score > FBestScore then
+            begin
+              FBestScore := score;
+              FBestOffset := offset;
+              FBestSlope := slope;
+
+            end;
+
           end;
-
-          score := cumulative / 10;
-
-          buffer := FloatToStr(slope) + ',' + FloatToStr(offset) + ',' + FloatToStr(score);
-          WriteLn(DataFile, buffer);
-
-          if score > FBestScore then
-          begin
-            FBestScore := score;
-            FBestOffset := offset;
-            FBestSlope := slope;
-
-            offsetIndex := SearchGrid.OffsetIndex[FBestOffset * offsetMult];
-            slopeIndex := SearchGrid.SlopeIndex[FBestSlope * slopeMult];
-
-            FOffsetEdge := ABS(offsetIndex + 0.1) / NumOffsets;//slightly less outdated calculations
-            FSlopeEdge := ABS(slopeIndex + 0.1) / NumSlopes;
-          end;
+          duplicate := False;//Every slope/offset needs to be checked for duplicates
 
         end;
 
@@ -207,7 +225,6 @@ var
   grid: TSearchGrid;
   massSpec: TMassSpectrum;
   featureTable: TFeatureTable;
-  score: Double;
   slopeMod, offsetMod: Double;
   slopeMult, offsetMult: Integer;
   i, j: Integer;
@@ -218,6 +235,7 @@ var
   newNumSlopes, newNumOffsets: Integer;
   featFile: Integer;
   dataFile: TextFile;
+  duplicate: Boolean;//To avoid mirroring the center axes, we will manually ignore duplicate values.
 
 
 begin
@@ -242,24 +260,8 @@ begin
   begin
     Append(dataFile);
   end;
-
-
-  (*
-  if Prev = 0 then
-  begin
-    massSpec := TMassSpectrum.Create(Csv, baseSlope, baseOffset);
-    featureTable := FeatureCalc.Feature[MassSpec];
-    WriteFeatures(featureTable, featFile);
-    score := CalcScore();
-    FBestScore := score;
-    Prev := score;
-    massSpec.Free;
-  end
-  else
-  begin
-    FBestScore := 0;
-  end;
-  *)
+  //In order to minimize the dll access, we calculate our features in batches.
+  duplicate := False;
   for i := 0 to NumSlopes - 1 do
   begin
     slopeMod := grid.SlopeAxis[i];
@@ -273,12 +275,26 @@ begin
         begin
           offsetMod := offsetMod * offsetMult;
 
-          slope := BaseSlope + slopeMod * BaseSlope;
-          offset := BaseOffset + offsetMod * BaseOffset;
-          massSpec := TMassSpectrum.Create(Csv, slope, offset);
-          featureTable := FeatureCalc.Feature[MassSpec];
-          WriteFeatures(featureTable, featFile);
-          massSpec.Free;
+          //duplicate check
+          if (slopeMod = 0) and (slopeMult = -1) then//checks for a duplicate if the slope is zero(mirroring the center is pointless)
+          begin
+            duplicate := True;
+          end;
+          if (offsetMod = 0) and (offsetMult = -1) then//checks for a duplicate if the offset is zero
+          begin
+            duplicate := True;
+          end;
+
+          if not duplicate then
+          begin
+            slope := BaseSlope + slopeMod * BaseSlope;
+            offset := BaseOffset + offsetMod * BaseOffset;
+            massSpec := TMassSpectrum.Create(Csv, slope, offset);
+            featureTable := FeatureCalc.Feature[MassSpec];
+            WriteFeatures(featureTable, featFile);
+            massSpec.Free;
+          end;
+          duplicate := False;//Every slope/offset needs to be checked for duplicates
         end;
 
       end;
